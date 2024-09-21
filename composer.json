@@ -1,0 +1,19 @@
+{
+    "name": "oneend/captcha",
+    "description": "A PHP Captcha Ext",
+    "type": "library",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "oneend\\captcha\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "hong",
+            "email": "chenxinhong56@gmail.com"
+        }
+    ],
+    "minimum-stability": "stable",
+    "require": {}
+}
