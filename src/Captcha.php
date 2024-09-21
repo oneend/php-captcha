@@ -113,9 +113,3 @@ class Captcha
 
 }
 
-Captcha::create()
-    ->setContent()
-    ->width(800)
-    ->build()
-    ->show();
-
