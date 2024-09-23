@@ -1,10 +1,14 @@
 <?php
+
 namespace oneend\captcha;
 
 class Captcha
 {
+    const TYPE_STRING = 'string';
+    const TYPE_MATHS = 'maths';
+    public $type = self::TYPE_STRING;
     public $image;
-    public $width = 200;
+    public $width = 180;
     public $height = 60;
     public $fontSize = 34;
     public $fonts = [
@@ -12,8 +16,12 @@ class Captcha
         __DIR__ . '/fonts/2.ttf',
         __DIR__ . '/fonts/3.ttf',
     ];
-
+    public $key;
     public $content;
+    public $result;
+    public $setFunc = null;
+    public $getFunc = null;
+    public $useSession = false;
 
     public static function create($config = [])
     {
@@ -21,9 +29,69 @@ class Captcha
         foreach ($config as $name => $value) {
             if (property_exists($self, $name)) {
                 $self->$name = $value;
+                if ($name == 'useSession' && $value) {
+                    $self->startSession();
+                }
             }
         }
         return $self;
+    }
+
+    public function useMaths($useMaths = true)
+    {
+        if ($useMaths) {
+            $this->type = self::TYPE_MATHS;
+        }
+        return $this;
+    }
+
+    public function get()
+    {
+        if ($this->useSession) {
+            return isset($_SESSION[$this->key]) ? $_SESSION[$this->key] : null;
+        }
+        if ($this->getFunc && is_callable($this->getFunc)) {
+            return call_user_func($this->getFunc, $this->key);
+        }
+        return null;
+    }
+
+    public function set($value)
+    {
+        if ($this->useSession) {
+            $_SESSION[$this->key] = is_array($value) ? json_encode($value, JSON_UNESCAPED_UNICODE) : $value;
+            return true;
+        }
+        if ($this->setFunc && is_callable($this->setFunc)) {
+            return call_user_func($this->setFunc, $this->key, $value);
+        }
+        return false;
+    }
+
+    public function getResult()
+    {
+        $value = $this->get();
+        if (!$value) {
+            return false;
+        }
+        $valueArr = json_decode($value, 1);
+        if (!$valueArr || !is_array($valueArr) || !$valueArr['result']) {
+            return false;
+        }
+        return $valueArr['result'];
+    }
+
+    public function verify($answer, $result = null)
+    {
+        if (!is_null($result)) {
+            return $this->verifyResult($answer, $result);
+        }
+        return $this->verifyResult($answer, $this->getResult());
+    }
+
+    public function verifyResult($answer, $result)
+    {
+        return strtolower($answer) == strtolower($result);
     }
 
     public function getContent($value)
@@ -43,11 +111,27 @@ class Captcha
         return $this;
     }
 
+    public function height($height)
+    {
+        $this->height = $height;
+        return $height;
+    }
+
     public function build()
     {
-
-        if ($this->content == null) {
-            $this->content = $this->generateContent();
+        if ($this->type == self::TYPE_STRING) {
+            $this->content == '' && $this->content = $this->generateContent();
+            if (!is_string($this->content) || strlen($this->content) > 10) {
+                throw new \Exception('content format error!');
+            }
+        } elseif ($this->type == self::TYPE_MATHS) {
+            if (!is_array($this->content) || !in_array($this->content[1], ['+', '-']) || !is_int($this->content[0]) || !is_int($this->content[2])) {
+                throw new \Exception('content format error!');
+            }
+            $this->content = $this->content[0] . $this->content[1] . $this->content[2];
+            $this->result = $this->content[1] === '+' ? ((int)$this->content[0] + (int)$this->content[2]) : ((int)$this->content[0] - (int)$this->content[2]);
+        } else {
+            throw new \Exception('type error!');
         }
 
         $this->image = imagecreatetruecolor($this->width, $this->height);
@@ -74,10 +158,42 @@ class Captcha
             $x += $this->fontSize + mt_rand(-1, 5);
         }
 
+        $this->key == null && $this->setKey(md5(uniqid(mt_rand(0, 10), true)));
+
+        $setRes = $this->set(json_encode([
+            'key' => $this->key,
+            'type' => $this->type,
+            'content' => $this->content,
+            'result' => $this->type == self::TYPE_STRING ? $this->content : $this->result,
+        ]));
+
+        if(!$setRes) {
+            throw new \Exception('set failed!');
+        }
+
+
         return $this;
     }
 
-    public function show()
+    public function useSession($useSession = true)
+    {
+        $this->useSession = $useSession;
+        $this->startSession();
+        return $this;
+    }
+
+    public function setKey($key)
+    {
+        $this->key = $key;
+        return $this;
+    }
+
+    public function getKey()
+    {
+        return $this->key;
+    }
+
+    public function showImage()
     {
         header('Content-Type: image/png');
         imagepng($this->image);
@@ -111,5 +227,11 @@ class Captcha
         return $code;
     }
 
-}
+    public function startSession()
+    {
+        if (session_status() !== PHP_SESSION_ACTIVE) {
+            session_start();
+        }
+    }
 
+}
